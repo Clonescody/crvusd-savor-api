@@ -1,7 +1,7 @@
 {
   "version": 2,
   "functions": {
-    "api/*.js": {
+    "api/*.ts": {
       "memory": 1024,
       "maxDuration": 10
     }
@@ -20,7 +20,7 @@
         },
         {
           "key": "Access-Control-Allow-Methods",
-          "value": "POST"
+          "value": "GET"
         },
         {
           "key": "Access-Control-Allow-Headers",

@@ -2,6 +2,7 @@
   "name": "crvusd-savor-api",
   "version": "1.0.0",
   "description": "Savor API for CRVUSD",
+  "type": "module",
   "repository": {
     "type": "git",
     "url": "git+git@github.com:UmamiDAO/crvusd-savor-api.git.git"
