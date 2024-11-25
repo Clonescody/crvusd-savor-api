@@ -90,12 +90,12 @@ export default async function POST(req: VercelRequest, res: VercelResponse) {
   if (!isAddress(userAddress)) {
     return res.status(400).json({ message: "Invalid user address" });
   }
-  const chain = req.body.chain as string;
-  if (!Object.values(SupportedChains).includes(chain as SupportedChains)) {
-    return res.status(400).json({ message: "Invalid chain" });
-  }
+  // const chain = req.body.chain;
+  // if (!Object.values(SupportedChains).includes(chain)) {
+  //   return res.status(400).json({ message: "Invalid chain" });
+  // }
 
-  const cacheKey = `savings-${chain}-${userAddress}`;
+  const cacheKey = `savings-${userAddress}`;
 
   const isCacheEntryUpdateNeeded = (
     updateTimestamp: number,
@@ -151,8 +151,8 @@ export default async function POST(req: VercelRequest, res: VercelResponse) {
   };
 
   const viemClient = createPublicClient({
-    chain: getViemChain(chain as SupportedChains),
-    transport: http(getRpcUrl(chain as SupportedChains)),
+    chain: mainnet,
+    transport: http(process.env.ETHEREUM_RPC_URL),
   });
 
   const vault = getAddress("0x0655977feb2f289a4ab78af67bab0d17aab84367");
