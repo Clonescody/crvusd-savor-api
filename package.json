@@ -1,0 +1,23 @@
+{
+  "name": "crvusd-savor-api",
+  "version": "1.0.0",
+  "description": "Savor API for CRVUSD",
+  "repository": {
+    "type": "git",
+    "url": "git+git@github.com:UmamiDAO/crvusd-savor-api.git.git"
+  },
+  "author": "clonescody",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/UmamiDAO/crvusd-savor-api"
+  },
+  "dependencies": {
+    "axios": "^1.7.7",
+    "ioredis": "^5.4.1",
+    "next": "^15.0.3",
+    "viem": "^2.21.50"
+  },
+  "devDependencies": {
+    "vercel": "^39.1.1"
+  }
+}
