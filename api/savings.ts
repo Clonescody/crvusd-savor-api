@@ -8,7 +8,7 @@ import {
   getAddress,
   formatUnits,
 } from "viem";
-import { arbitrum, mainnet } from "viem/chains";
+import { mainnet } from "viem/chains";
 
 type Event = {
   type: EventType;
@@ -27,11 +27,6 @@ type RedisCacheEntry<T> = {
   updateTimestamp: number;
   data: T;
 };
-
-enum SupportedChains {
-  Ethereum = "ethereum",
-  Arbitrum = "arbitrum",
-}
 
 const LLAMA_LEND_VAULT_ABI = {
   abi: [
@@ -80,6 +75,40 @@ enum EventType {
   Withdraw = "withdraw",
 }
 
+const isCacheEntryUpdateNeeded = (
+  updateTimestamp: number,
+  minutesCacheInterval: number
+): boolean => {
+  const then = new Date(updateTimestamp);
+  const now = new Date();
+  const msBetweenDates = Math.abs(then.getTime() - now.getTime());
+  const minutesBetweenDates = msBetweenDates / (60 * 1000);
+  return minutesBetweenDates > minutesCacheInterval;
+};
+
+const setRedisCacheEntry = async (
+  redisService: Redis,
+  cacheKey: string,
+  data: any,
+  updateTimestamp?: number
+) => {
+  await redisService.set(
+    cacheKey,
+    JSON.stringify({
+      updateTimestamp: updateTimestamp || new Date().getTime(),
+      data,
+    })
+  );
+};
+
+const getRedisCacheEntry = async <T>(
+  redisService: Redis,
+  cacheKey: string
+): Promise<T | null> => {
+  const cacheEntry = await redisService.get(cacheKey);
+  return cacheEntry ? JSON.parse(cacheEntry) : null;
+};
+
 export default async function POST(req: VercelRequest, res: VercelResponse) {
   if (!process.env.REDIS_URL) {
     return res.status(500).json({
@@ -90,65 +119,19 @@ export default async function POST(req: VercelRequest, res: VercelResponse) {
   if (!isAddress(userAddress)) {
     return res.status(400).json({ message: "Invalid user address" });
   }
-  // const chain = req.body.chain;
-  // if (!Object.values(SupportedChains).includes(chain)) {
-  //   return res.status(400).json({ message: "Invalid chain" });
-  // }
 
   const cacheKey = `savings-${userAddress}`;
 
-  const isCacheEntryUpdateNeeded = (
-    updateTimestamp: number,
-    minutesCacheInterval: number
-  ): boolean => {
-    const then = new Date(updateTimestamp);
-    const now = new Date();
-    const msBetweenDates = Math.abs(then.getTime() - now.getTime());
-    const minutesBetweenDates = msBetweenDates / (60 * 1000);
-    return minutesBetweenDates > minutesCacheInterval;
-  };
-
   const redisService = new Redis(process.env.REDIS_URL);
 
-  const setRedisCacheEntry = async (
-    cacheKey: string,
-    data: any,
-    updateTimestamp?: number
-  ) => {
-    await redisService.set(
-      cacheKey,
-      JSON.stringify({
-        updateTimestamp: updateTimestamp || new Date().getTime(),
-        data,
-      })
-    );
-  };
-
-  const getRedisCacheEntry = async <T>(cacheKey: string): Promise<T | null> => {
-    const cacheEntry = await redisService.get(cacheKey);
-    return cacheEntry ? JSON.parse(cacheEntry) : null;
-  };
-
   const cacheEntry = await getRedisCacheEntry<RedisCacheEntry<SavingsData>>(
+    redisService,
     cacheKey
   );
 
   if (cacheEntry && !isCacheEntryUpdateNeeded(cacheEntry.updateTimestamp, 60)) {
     return res.status(200).json({ status: "success", data: cacheEntry.data });
   }
-
-  const getViemChain = (chain: SupportedChains) => {
-    if (chain === SupportedChains.Ethereum) {
-      return mainnet;
-    }
-    return arbitrum;
-  };
-  const getRpcUrl = (chain: SupportedChains) => {
-    if (chain === SupportedChains.Ethereum) {
-      return process.env.ETHEREUM_RPC_URL;
-    }
-    return process.env.ARBITRUM_RPC_URL;
-  };
 
   const viemClient = createPublicClient({
     chain: mainnet,
@@ -259,7 +242,7 @@ export default async function POST(req: VercelRequest, res: VercelResponse) {
 
   const totalRevenues = redeemValue - totalDeposited;
 
-  await setRedisCacheEntry(cacheKey, {
+  await setRedisCacheEntry(redisService, cacheKey, {
     totalDeposited,
     totalRevenues,
     events,
