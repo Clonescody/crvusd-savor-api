@@ -20,7 +20,7 @@
         },
         {
           "key": "Access-Control-Allow-Methods",
-          "value": "POST"
+          "value": "POST,GET"
         },
         {
           "key": "Access-Control-Allow-Headers",

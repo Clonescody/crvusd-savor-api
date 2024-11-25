@@ -8,6 +8,11 @@ type RedisCacheEntry<T> = {
   data: T;
 };
 
+enum EventType {
+  Deposit = "deposit",
+  Withdraw = "withdraw",
+}
+
 type Event = {
   type: EventType;
   amount: number;
@@ -16,25 +21,29 @@ type Event = {
 };
 
 type SavingsData = {
+  tvl: number;
+  apr: number;
   totalDeposited: number;
   currentBalance: number;
   totalRevenues: number;
   events: Event[];
 };
 
-enum EventType {
-  Deposit = "deposit",
-  Withdraw = "withdraw",
-}
+type CurveApiSavingsStats = {
+  last_updated: string;
+  last_updated_block: number;
+  proj_apr: number;
+  supply: number;
+};
 
-type CurveApiSavingStats = {
+type CurveApiUserSavingStats = {
   total_deposited: string;
   total_received: string;
   total_withdrawn: string;
   current_balance: string;
 };
 
-type CurveApiSavingEvent = {
+type CurveApiSavingsEvent = {
   action_type: string;
   sender: string;
   owner: string;
@@ -46,9 +55,9 @@ type CurveApiSavingEvent = {
   transaction_hash: string;
 };
 
-type CurveApiSavingEvents = {
+type CurveApiUserSavingsEvents = {
   count: number;
-  events: CurveApiSavingEvent[];
+  events: CurveApiSavingsEvent[];
 };
 
 const isCacheEntryUpdateNeeded = (
@@ -87,8 +96,8 @@ const getRedisCacheEntry = async <T>(
 
 const fetchSavingsData = async (
   userAddress: string
-): Promise<CurveApiSavingStats> => {
-  const statsResponse = await axios.get<CurveApiSavingStats>(
+): Promise<CurveApiUserSavingStats> => {
+  const statsResponse = await axios.get<CurveApiUserSavingStats>(
     `https://prices.curve.fi/v1/crvusd/savings/${userAddress}/stats`
   );
 
@@ -98,12 +107,20 @@ const fetchSavingsData = async (
 const fetchSavingsEvents = async (
   userAddress: string,
   page: number
-): Promise<CurveApiSavingEvents> => {
-  const eventsResponse = await axios.get<CurveApiSavingEvents>(
+): Promise<CurveApiUserSavingsEvents> => {
+  const eventsResponse = await axios.get<CurveApiUserSavingsEvents>(
     `https://prices.curve.fi/v1/crvusd/savings/${userAddress}/events?page=${page}&per_page=10`
   );
 
   return eventsResponse.data;
+};
+
+const fetchSavingsStats = async (): Promise<CurveApiSavingsStats> => {
+  const statsResponse = await axios.get<CurveApiSavingsStats>(
+    `https://prices.curve.fi/v1/crvusd/savings/statistics`
+  );
+
+  return statsResponse.data;
 };
 
 export default async function POST(req: VercelRequest, res: VercelResponse) {
@@ -132,22 +149,23 @@ export default async function POST(req: VercelRequest, res: VercelResponse) {
 
   let eventsPage = 1;
 
-  const [savingsData, eventsData] = await Promise.all([
+  const [savingsData, eventsData, statsData] = await Promise.all([
     fetchSavingsData(userAddress),
     fetchSavingsEvents(userAddress, eventsPage),
+    fetchSavingsStats(),
   ]);
 
   const { count, events } = eventsData;
+  const { total_deposited, current_balance } = savingsData;
+  const { proj_apr, supply } = statsData;
 
-  const allEvents: CurveApiSavingEvent[] = events;
+  const allEvents: CurveApiSavingsEvent[] = events;
 
   while (count % 10 === 0) {
     eventsPage++;
     const newEventsData = await fetchSavingsEvents(userAddress, eventsPage);
     allEvents.push(...newEventsData.events);
   }
-
-  const { total_deposited, current_balance } = savingsData;
 
   const totalDeposited = Number(formatUnits(BigInt(total_deposited), 18));
   const currentBalance = Number(formatUnits(BigInt(current_balance), 18));
@@ -167,6 +185,8 @@ export default async function POST(req: VercelRequest, res: VercelResponse) {
     totalRevenues,
     currentBalance,
     events: formattedEvents,
+    tvl: supply,
+    apr: proj_apr,
   };
 
   await setRedisCacheEntry(redisService, cacheKey, response);
