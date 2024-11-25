@@ -80,15 +80,17 @@ enum EventType {
   Withdraw = "withdraw",
 }
 
-export default async function GET(req: VercelRequest, res: VercelResponse) {
-  if (!process.env.REDIS_SERVER_URL) {
-    return res.status(500).json({ message: "Redis server URL is not set" });
+export default async function POST(req: VercelRequest, res: VercelResponse) {
+  if (!process.env.REDIS_URL) {
+    return res.status(500).json({
+      message: "Redis server URL is not set",
+    });
   }
-  const userAddress = req.query.user as string;
+  const userAddress = req.body.user as string;
   if (!isAddress(userAddress)) {
     return res.status(400).json({ message: "Invalid user address" });
   }
-  const chain = req.query.chain as string;
+  const chain = req.body.chain as string;
   if (!Object.values(SupportedChains).includes(chain as SupportedChains)) {
     return res.status(400).json({ message: "Invalid chain" });
   }
@@ -106,7 +108,7 @@ export default async function GET(req: VercelRequest, res: VercelResponse) {
     return minutesBetweenDates > minutesCacheInterval;
   };
 
-  const redisService = new Redis(process.env.REDIS_SERVER_URL);
+  const redisService = new Redis(process.env.REDIS_URL);
 
   const setRedisCacheEntry = async (
     cacheKey: string,
