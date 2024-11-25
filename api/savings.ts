@@ -171,7 +171,7 @@ export default async function POST(req: VercelRequest, res: VercelResponse) {
     args: [userAddress],
   });
 
-  const [depositLogs, withdrawLogs, redeemValueRaw] = await Promise.all([
+  const [depositEvents, withdrawEvents, redeemValueRaw] = await Promise.all([
     viemClient.getFilterLogs({
       filter: depositFilter,
     }),
@@ -186,7 +186,7 @@ export default async function POST(req: VercelRequest, res: VercelResponse) {
     }),
   ]);
 
-  const allLogs = [...depositLogs, ...withdrawLogs];
+  const allLogs = [...depositEvents, ...withdrawEvents];
 
   if (allLogs.length === 0) {
     return res.status(200).json({
@@ -210,7 +210,7 @@ export default async function POST(req: VercelRequest, res: VercelResponse) {
   });
 
   const events = [
-    ...depositLogs.map((event) => ({
+    ...depositEvents.map((event) => ({
       type: EventType.Deposit,
       amount: event.args.assets
         ? Number(formatUnits(event.args.assets, 18))
@@ -218,7 +218,7 @@ export default async function POST(req: VercelRequest, res: VercelResponse) {
       hash: event.transactionHash,
       blockNumber: Number(event.blockNumber),
     })),
-    ...withdrawLogs.map((event) => ({
+    ...withdrawEvents.map((event) => ({
       type: EventType.Withdraw,
       amount: event.args.assets
         ? Number(formatUnits(event.args.assets, 18))
