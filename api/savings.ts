@@ -23,11 +23,6 @@ type SavingsData = {
   events: Event[];
 };
 
-type SavingsResponse = {
-  status: "success" | "empty";
-  data: SavingsData;
-};
-
 type RedisCacheEntry<T> = {
   updateTimestamp: number;
   data: T;
