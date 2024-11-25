@@ -355,27 +355,44 @@ export default async function POST(req: VercelRequest, res: VercelResponse) {
       ? BigInt(lastUserEventBlockNumber)
       : getLendingVaultStartBlock(chain as SupportedChains, vault.address);
 
-    const [depositFilter, withdrawFilter] = await Promise.all([
-      viemClient.createContractEventFilter({
-        address: vault.address,
-        abi: LLAMA_LEND_VAULT_ABI.abi,
-        eventName: "Deposit",
-        fromBlock: startBlock,
-        args: {
-          owner: userAddress,
-        },
-      }),
-      viemClient.createContractEventFilter({
-        address: vault.address,
-        abi: LLAMA_LEND_VAULT_ABI.abi,
-        eventName: "Withdraw",
-        fromBlock: startBlock,
-        args: {
-          owner: userAddress,
-        },
-        strict: true,
-      }),
-    ]);
+    const depositFilter = await viemClient.createContractEventFilter({
+      address: vault.address,
+      abi: LLAMA_LEND_VAULT_ABI.abi,
+      eventName: "Deposit",
+      fromBlock: startBlock,
+      args: {
+        owner: userAddress,
+      },
+    });
+
+    const depositEvents = await viemClient.getFilterLogs({
+      filter: depositFilter,
+    });
+
+    if (depositEvents.length === 0) {
+      allVaultsEvents.push({
+        vault: vault.address,
+        redeemValue: 0,
+        earnings: 0,
+        collateral: vault.collateral,
+        borrowed: vault.borrowed,
+        chainId: vault.chainId,
+        lendApyPcent: vault.lendApyPcent,
+        events: [],
+      });
+      continue;
+    }
+
+    const withdrawFilter = await viemClient.createContractEventFilter({
+      address: vault.address,
+      abi: LLAMA_LEND_VAULT_ABI.abi,
+      eventName: "Withdraw",
+      fromBlock: startBlock,
+      args: {
+        owner: userAddress,
+      },
+      strict: true,
+    });
 
     const balanceOfContract = await viemClient.readContract({
       address: vault.address,
@@ -384,10 +401,7 @@ export default async function POST(req: VercelRequest, res: VercelResponse) {
       args: [userAddress],
     });
 
-    const [depositEvents, withdrawEvents, redeemValueRaw] = await Promise.all([
-      viemClient.getFilterLogs({
-        filter: depositFilter,
-      }),
+    const [withdrawEvents, redeemValueRaw] = await Promise.all([
       viemClient.getFilterLogs({
         filter: withdrawFilter,
       }),

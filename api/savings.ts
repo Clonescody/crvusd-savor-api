@@ -1,79 +1,55 @@
-import { VercelRequest, VercelResponse } from "@vercel/node";
-
+import axios from "axios";
 import Redis from "ioredis";
-import {
-  http,
-  createPublicClient,
-  isAddress,
-  getAddress,
-  formatUnits,
-} from "viem";
-import { mainnet } from "viem/chains";
-
-type Event = {
-  type: EventType;
-  amount: number;
-  hash: string;
-  blockNumber: number;
-};
-
-type SavingsData = {
-  totalDeposited: number;
-  totalRevenues: number;
-  events: Event[];
-};
+import { VercelRequest, VercelResponse } from "@vercel/node";
+import { isAddress, formatUnits } from "viem";
 
 type RedisCacheEntry<T> = {
   updateTimestamp: number;
   data: T;
 };
 
-const LLAMA_LEND_VAULT_ABI = {
-  abi: [
-    {
-      name: "Deposit",
-      inputs: [
-        { name: "sender", type: "address", indexed: true },
-        { name: "owner", type: "address", indexed: true },
-        { name: "assets", type: "uint256", indexed: false },
-        { name: "shares", type: "uint256", indexed: false },
-      ],
-      anonymous: false,
-      type: "event",
-    },
-    {
-      name: "Withdraw",
-      inputs: [
-        { name: "sender", type: "address", indexed: true },
-        { name: "receiver", type: "address", indexed: true },
-        { name: "owner", type: "address", indexed: true },
-        { name: "assets", type: "uint256", indexed: false },
-        { name: "shares", type: "uint256", indexed: false },
-      ],
-      anonymous: false,
-      type: "event",
-    },
-    {
-      stateMutability: "view",
-      type: "function",
-      name: "balanceOf",
-      inputs: [{ name: "arg0", type: "address" }],
-      outputs: [{ name: "", type: "uint256" }],
-    },
-    {
-      stateMutability: "view",
-      type: "function",
-      name: "previewRedeem",
-      inputs: [{ name: "shares", type: "uint256" }],
-      outputs: [{ name: "", type: "uint256" }],
-    },
-  ],
-} as const;
+type Event = {
+  type: EventType;
+  amount: number;
+  hash: string;
+  timestamp: number;
+};
+
+type SavingsData = {
+  totalDeposited: number;
+  currentBalance: number;
+  totalRevenues: number;
+  events: Event[];
+};
 
 enum EventType {
   Deposit = "deposit",
   Withdraw = "withdraw",
 }
+
+type CurveApiSavingStats = {
+  total_deposited: string;
+  total_received: string;
+  total_withdrawn: string;
+  current_balance: string;
+};
+
+type CurveApiSavingEvent = {
+  action_type: string;
+  sender: string;
+  owner: string;
+  receiver: string;
+  assets: string;
+  shares: string;
+  block_number: number;
+  timestamp: string;
+  transaction_hash: string;
+};
+
+type CurveApiSavingEvents = {
+  count: number;
+  events: CurveApiSavingEvent[];
+};
 
 const isCacheEntryUpdateNeeded = (
   updateTimestamp: number,
@@ -109,6 +85,27 @@ const getRedisCacheEntry = async <T>(
   return cacheEntry ? JSON.parse(cacheEntry) : null;
 };
 
+const fetchSavingsData = async (
+  userAddress: string
+): Promise<CurveApiSavingStats> => {
+  const statsResponse = await axios.get<CurveApiSavingStats>(
+    `https://prices.curve.fi/v1/crvusd/savings/${userAddress}/stats`
+  );
+
+  return statsResponse.data;
+};
+
+const fetchSavingsEvents = async (
+  userAddress: string,
+  page: number
+): Promise<CurveApiSavingEvents> => {
+  const eventsResponse = await axios.get<CurveApiSavingEvents>(
+    `https://prices.curve.fi/v1/crvusd/savings/${userAddress}/events?page=${page}&per_page=10`
+  );
+
+  return eventsResponse.data;
+};
+
 export default async function POST(req: VercelRequest, res: VercelResponse) {
   if (!process.env.REDIS_URL) {
     return res.status(500).json({
@@ -130,128 +127,51 @@ export default async function POST(req: VercelRequest, res: VercelResponse) {
   );
 
   if (cacheEntry && !isCacheEntryUpdateNeeded(cacheEntry.updateTimestamp, 60)) {
-    return res.status(200).json({ status: "success", data: cacheEntry.data });
+    return res.status(200).json({ ...cacheEntry.data });
   }
 
-  const viemClient = createPublicClient({
-    chain: mainnet,
-    transport: http(process.env.ETHEREUM_RPC_URL),
-  });
+  let eventsPage = 1;
 
-  const vault = getAddress("0x0655977feb2f289a4ab78af67bab0d17aab84367");
-  const startBlock = 21087889n;
-
-  const [depositFilter, withdrawFilter] = await Promise.all([
-    viemClient.createContractEventFilter({
-      address: vault,
-      abi: LLAMA_LEND_VAULT_ABI.abi,
-      eventName: "Deposit",
-      fromBlock: startBlock,
-      args: {
-        owner: userAddress,
-      },
-      strict: true,
-    }),
-    viemClient.createContractEventFilter({
-      address: vault,
-      abi: LLAMA_LEND_VAULT_ABI.abi,
-      eventName: "Withdraw",
-      fromBlock: startBlock,
-      args: {
-        owner: userAddress,
-      },
-      strict: true,
-    }),
+  const [savingsData, eventsData] = await Promise.all([
+    fetchSavingsData(userAddress),
+    fetchSavingsEvents(userAddress, eventsPage),
   ]);
 
-  const balanceOfContract = await viemClient.readContract({
-    address: vault,
-    abi: LLAMA_LEND_VAULT_ABI.abi,
-    functionName: "balanceOf",
-    args: [userAddress],
-  });
+  const { count, events } = eventsData;
 
-  const [depositEvents, withdrawEvents, redeemValueRaw] = await Promise.all([
-    viemClient.getFilterLogs({
-      filter: depositFilter,
-    }),
-    viemClient.getFilterLogs({
-      filter: withdrawFilter,
-    }),
-    viemClient.readContract({
-      address: vault,
-      abi: LLAMA_LEND_VAULT_ABI.abi,
-      functionName: "previewRedeem",
-      args: [balanceOfContract],
-    }),
-  ]);
+  const allEvents: CurveApiSavingEvent[] = events;
 
-  const allLogs = [...depositEvents, ...withdrawEvents];
-
-  if (allLogs.length === 0) {
-    return res.status(200).json({
-      status: "empty",
-      totalDeposited: 0,
-      totalRevenues: 0,
-      events: [],
-    });
+  while (count % 10 === 0) {
+    eventsPage++;
+    const newEventsData = await fetchSavingsEvents(userAddress, eventsPage);
+    allEvents.push(...newEventsData.events);
   }
 
-  const redeemValue = Number(formatUnits(redeemValueRaw, 18));
-  let depositedInVault = 0;
-  let withdrawFromVault = 0;
+  const { total_deposited, current_balance } = savingsData;
 
-  allLogs.forEach((log) => {
-    if (log.eventName === "Deposit") {
-      depositedInVault += Number(formatUnits(log.args.assets, 18));
-    } else {
-      withdrawFromVault += Number(formatUnits(log.args.assets, 18));
-    }
-  });
+  const totalDeposited = Number(formatUnits(BigInt(total_deposited), 18));
+  const currentBalance = Number(formatUnits(BigInt(current_balance), 18));
 
-  const events = [
-    ...depositEvents.map((event) => ({
-      type: EventType.Deposit,
-      amount: event.args.assets
-        ? Number(formatUnits(event.args.assets, 18))
-        : 0,
-      hash: event.transactionHash,
-      blockNumber: Number(event.blockNumber),
-    })),
-    ...withdrawEvents.map((event) => ({
-      type: EventType.Withdraw,
-      amount: event.args.assets
-        ? Number(formatUnits(event.args.assets, 18))
-        : 0,
-      hash: event.transactionHash,
-      blockNumber: Number(event.blockNumber),
-    })),
-  ].sort((a, b) => b.blockNumber - a.blockNumber);
+  const totalRevenues = currentBalance - totalDeposited;
 
-  let totalDeposited = 0;
+  const formattedEvents: Event[] = allEvents.map((event) => ({
+    type:
+      event.action_type === "deposit" ? EventType.Deposit : EventType.Withdraw,
+    amount: Number(formatUnits(BigInt(event.assets), 18)),
+    hash: event.transaction_hash,
+    timestamp: new Date(event.timestamp).getTime(),
+  }));
 
-  if (redeemValue > 0 && events.length > 0) {
-    totalDeposited = events.reduce(
-      (acc, event) =>
-        event.type === EventType.Deposit
-          ? acc + event.amount
-          : acc - event.amount,
-      0
-    );
-  }
-
-  const totalRevenues = redeemValue - totalDeposited;
-
-  await setRedisCacheEntry(redisService, cacheKey, {
+  const response: SavingsData = {
     totalDeposited,
     totalRevenues,
-    events,
-  });
+    currentBalance,
+    events: formattedEvents,
+  };
+
+  await setRedisCacheEntry(redisService, cacheKey, response);
 
   res.status(200).json({
-    status: "success",
-    totalDeposited,
-    totalRevenues,
-    events,
+    ...response,
   });
 }
