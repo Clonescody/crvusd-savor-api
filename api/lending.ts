@@ -61,6 +61,10 @@ type VaultWithEvents = {
   vault: Address;
   redeemValue: number;
   earnings: number;
+  collateral: string;
+  borrowed: string;
+  chainId: string;
+  lendApyPcent: number;
   events: Event[];
 };
 
@@ -277,7 +281,7 @@ const setRedisCacheEntry = async (
 const getRedisCacheEntry = async <T>(
   redisService: Redis,
   cacheKey: string
-): Promise<T | null> => {
+): Promise<{ data: T; updateTimestamp: number } | null> => {
   const cacheEntry = await redisService.get(cacheKey);
   return cacheEntry ? JSON.parse(cacheEntry) : null;
 };
@@ -321,13 +325,18 @@ export default async function POST(req: VercelRequest, res: VercelResponse) {
   }
 
   const cacheKey = `lending-${chain}-${userAddress}`;
+  const lastUserEventBlockKey = `lending-${chain}-${userAddress}-last-event-block`;
 
   const redisService = new Redis(process.env.REDIS_URL);
 
-  const cacheEntry = await getRedisCacheEntry<RedisCacheEntry<LendingData>>(
-    redisService,
-    cacheKey
-  );
+  const [cacheEntry, lastUserEventBlock] = await Promise.all([
+    getRedisCacheEntry<RedisCacheEntry<LendingData>>(redisService, cacheKey),
+    getRedisCacheEntry<number>(redisService, lastUserEventBlockKey),
+  ]);
+
+  const lastUserEventBlockNumber = lastUserEventBlock
+    ? lastUserEventBlock.data
+    : null;
 
   if (cacheEntry && !isCacheEntryUpdateNeeded(cacheEntry.updateTimestamp, 60)) {
     return res.status(200).json({ status: "success", data: cacheEntry.data });
@@ -340,11 +349,12 @@ export default async function POST(req: VercelRequest, res: VercelResponse) {
 
   const vaults = await fetchVaultsList(chain);
   const allVaultsEvents: VaultWithEvents[] = [];
+
   for (const vault of vaults) {
-    const startBlock = getLendingVaultStartBlock(
-      chain as SupportedChains,
-      vault.address
-    );
+    const startBlock = lastUserEventBlockNumber
+      ? BigInt(lastUserEventBlockNumber)
+      : getLendingVaultStartBlock(chain as SupportedChains, vault.address);
+
     const [depositFilter, withdrawFilter] = await Promise.all([
       viemClient.createContractEventFilter({
         address: vault.address,
@@ -388,8 +398,7 @@ export default async function POST(req: VercelRequest, res: VercelResponse) {
         args: [balanceOfContract],
       }),
     ]);
-    console.log("deposit events", depositEvents);
-    console.log("withdraw events", withdrawEvents);
+
     const redeemValue = Number(formatUnits(redeemValueRaw, 18));
 
     let depositedInVault = 0;
@@ -442,6 +451,10 @@ export default async function POST(req: VercelRequest, res: VercelResponse) {
       vault: vault.address,
       redeemValue,
       earnings,
+      collateral: vault.collateral,
+      borrowed: vault.borrowed,
+      chainId: vault.chainId,
+      lendApyPcent: vault.lendApyPcent,
       events: [
         ...depositEvents.map((event) => ({
           type: EventType.Deposit,
@@ -461,12 +474,18 @@ export default async function POST(req: VercelRequest, res: VercelResponse) {
         })),
       ],
     });
-
-    console.log("all vaults events", allVaultsEvents);
-    return allVaultsEvents;
   }
 
-  await setRedisCacheEntry(redisService, cacheKey, allVaultsEvents);
+  const lastBlock = Math.max(
+    ...allVaultsEvents.map((vault) =>
+      Math.max(...vault.events.map((event) => event.blockNumber))
+    )
+  );
+
+  await Promise.all([
+    setRedisCacheEntry(redisService, lastUserEventBlockKey, lastBlock),
+    setRedisCacheEntry(redisService, cacheKey, allVaultsEvents),
+  ]);
 
   res.status(200).json({
     status: "success",

@@ -104,7 +104,7 @@ const setRedisCacheEntry = async (
 const getRedisCacheEntry = async <T>(
   redisService: Redis,
   cacheKey: string
-): Promise<T | null> => {
+): Promise<{ data: T; updateTimestamp: number } | null> => {
   const cacheEntry = await redisService.get(cacheKey);
   return cacheEntry ? JSON.parse(cacheEntry) : null;
 };
