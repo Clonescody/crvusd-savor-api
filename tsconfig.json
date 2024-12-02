@@ -1,0 +1,7 @@
+{
+  "compilerOptions": {
+    "incremental": true,
+    "noUncheckedIndexedAccess": true,
+    "strict": true
+  }
+}

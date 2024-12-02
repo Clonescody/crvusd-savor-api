@@ -3,7 +3,7 @@
   "functions": {
     "api/*.ts": {
       "memory": 1024,
-      "maxDuration": 60
+      "maxDuration": 10
     }
   },
   "headers": [
@@ -12,7 +12,7 @@
       "headers": [
         {
           "key": "Access-Control-Allow-Credentials",
-          "value": "true"
+          "value": "false"
         },
         {
           "key": "Access-Control-Allow-Origin",
@@ -20,11 +20,11 @@
         },
         {
           "key": "Access-Control-Allow-Methods",
-          "value": "POST,GET"
+          "value": "POST,GET,OPTIONS"
         },
         {
           "key": "Access-Control-Allow-Headers",
-          "value": "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version"
+          "value": "Content-Type"
         }
       ]
     }

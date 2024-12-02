@@ -10,6 +10,7 @@ type RedisCacheEntry<T> = {
 type SavingsInfos = {
   tvl: number;
   apr: number;
+  url: string;
 };
 
 type CurveApiSavingsStats = {
@@ -88,6 +89,7 @@ export default async function GET(req: VercelRequest, res: VercelResponse) {
   const response: SavingsInfos = {
     tvl: supply,
     apr: proj_apr,
+    url: "https://crvusd.curve.fi/#/ethereum/scrvUSD",
   };
 
   await setRedisCacheEntry(redisService, cacheKey, response);
