@@ -63,6 +63,9 @@ const fetchSavingsStats = async (): Promise<CurveApiSavingsStats> => {
 };
 
 export default async function GET(req: VercelRequest, res: VercelResponse) {
+  res.setHeader("Access-Control-Allow-Credentials", "false");
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET");
   if (!process.env.REDIS_URL) {
     return res.status(500).json({
       message: "Redis server URL is not set",
