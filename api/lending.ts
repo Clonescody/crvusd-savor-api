@@ -250,6 +250,9 @@ const fetchVaultsList = async (chain: string): Promise<Vault[]> => {
 
   return vaults
     .filter((vault) => vault.rates.lendApyPcent > 0)
+    .filter(
+      (vault) => vault.assets.collateral.symbol.toLowerCase() !== "crvusd"
+    )
     .map(
       (vault: CurveApiVault): Vault => ({
         collateral: vault.assets.collateral.symbol,
