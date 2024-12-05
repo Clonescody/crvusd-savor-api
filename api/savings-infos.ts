@@ -62,10 +62,10 @@ const fetchSavingsStats = async (): Promise<CurveApiSavingsStats> => {
   return statsResponse.data;
 };
 
-export default async function GET(req: VercelRequest, res: VercelResponse) {
-  res.setHeader("Access-Control-Allow-Credentials", "false");
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET");
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (req.method !== "GET") {
+    return res.status(405).json({ message: "Method not allowed" });
+  }
   if (!process.env.REDIS_URL) {
     return res.status(500).json({
       message: "Redis server URL is not set",
