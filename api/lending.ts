@@ -151,6 +151,7 @@ type Vault = {
 };
 
 type VaultWithEvents = Vault & {
+  deposited: number;
   redeemValue: number;
   earnings: number;
   events: Event[];
@@ -312,8 +313,7 @@ const fetchVaultsAndEventsForChain = async (
 
     let redeemValue = 0;
     let depositedInVault = 0;
-    let withdrawFromVault = 0;
-    let totalDeposited = 0;
+    let withdrawnFromVault = 0;
 
     if (events.length > 0) {
       const balanceOf = await viemClient.readContract({
@@ -336,24 +336,20 @@ const fetchVaultsAndEventsForChain = async (
         if (event.type === EventType.Deposit) {
           depositedInVault += event.amount;
         } else {
-          withdrawFromVault += event.amount;
+          withdrawnFromVault += event.amount;
         }
       });
-      if (redeemValue > 0) {
-        totalDeposited = events.reduce(
-          (acc, event) =>
-            event.type === EventType.Deposit
-              ? acc + event.amount
-              : acc - event.amount,
-          0
-        );
-      }
     }
-
-    const earnings = redeemValue - totalDeposited;
+    let deposited = depositedInVault - withdrawnFromVault;
+    let earnings = redeemValue - deposited;
+    if (redeemValue === 0) {
+      deposited = 0;
+      earnings = withdrawnFromVault - depositedInVault;
+    }
 
     allVaultsEvents.push({
       ...vault,
+      deposited,
       redeemValue,
       earnings,
       events,

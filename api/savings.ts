@@ -46,9 +46,9 @@ type Event = {
 };
 
 type UserSavingsData = {
-  totalDeposited: number;
-  currentBalance: number;
-  totalRevenues: number;
+  deposited: number;
+  redeemValue: number;
+  earnings: number;
   events: Event[];
 };
 
@@ -202,25 +202,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const events = await fetchSavingsEvents(userAddress);
 
-  const currentBalance = Number(current_balance);
-  let totalDeposited = Number(total_deposited);
-  let totalRevenues = currentBalance - totalDeposited;
+  const redeemValue = Number(current_balance);
+  let deposited = Number(total_deposited);
+  let earnings = redeemValue - deposited;
 
-  if (currentBalance === 0) {
-    totalDeposited = 0;
+  if (redeemValue === 0) {
     const totalDeposits = events
       .filter((event) => event.type === EventType.Deposit)
       .reduce((acc, event) => acc + event.amount, 0);
     const totalWithdrawals = events
       .filter((event) => event.type === EventType.Withdraw)
       .reduce((acc, event) => acc + event.amount, 0);
-    totalRevenues = totalWithdrawals - totalDeposits;
+    earnings = totalWithdrawals - totalDeposits;
+    deposited = 0;
   }
 
   const response: UserSavingsData = {
-    totalDeposited,
-    totalRevenues,
-    currentBalance,
+    deposited,
+    earnings,
+    redeemValue,
     events,
   };
 
