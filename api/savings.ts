@@ -191,9 +191,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (savingsData === null) {
     return res.status(200).json({
-      totalDeposited: 0,
-      currentBalance: 0,
-      totalRevenues: 0,
+      deposited: 0,
+      redeemValue: 0,
+      earnings: 0,
       events: [],
     });
   }
