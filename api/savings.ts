@@ -198,12 +198,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   }
 
-  const { total_deposited, current_balance } = savingsData;
+  const { current_balance } = savingsData;
 
   const events = await fetchSavingsEvents(userAddress);
 
   const redeemValue = Number(current_balance);
-  let deposited = Number(total_deposited);
+  let deposited = events.reduce(
+    (acc, event) =>
+      event.type === EventType.Deposit
+        ? acc + event.amount
+        : acc - event.amount,
+    0
+  );
   let earnings = redeemValue - deposited;
 
   if (redeemValue === 0) {
